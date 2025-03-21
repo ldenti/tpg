@@ -10,32 +10,24 @@
 
 #include "khash.h"
 #include "kseq.h"
-#include "ksort.h"
-#include "kvec.h"
 
-#include "labels.h"
 #include "misc.h"
 #include "path.h"
-#include "segment.h"
-
-/* #include "ic.h" */
-
-/* KHASH_MAP_INIT_INT(im, int) */
+#include "segments.h"
 
 /* Some assumptions I made:
  * - vertex identifiers in GFA are integers
  * - graph has less than INT_MAX nodes
+ * - we do not need to store all paths here
  */
 
 typedef struct {
-  char *fn;            /* gfa file name */
-  labels_t *vertices;  /* labels in graph vertex order */
-  khash_t(im) * v_map; /* mapping between gfa idx and internal idx (position on
-                          vertices) */
-  path_t *paths;
-
-  int np;
-  int cp;
+  char *fn;             /* gfa file name */
+  segments_t *vertices; /* labels in graph vertex order */
+  khash_t(im) * v_map;  /* mapping between gfa idx and internal idx (position on
+                           vertices) */
+  /* We do not need to load all paths */
+  /* path_t *paths; */
 } graph_t;
 
 /* Initialize a graph */
@@ -48,7 +40,7 @@ void destroy_graph(graph_t *g);
 int load_vertices(graph_t *g, int wseq);
 
 /* Load all paths from gfa */
-int load_paths(graph_t *g);
+/* int load_paths(graph_t *g); */
 
 /* Convert vertex from GFA space to graph space */
 int get_iidx(graph_t *g, int v);

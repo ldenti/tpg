@@ -1,13 +1,13 @@
 CC=gcc
-CFLAGS=-g -O3 -Wall -Wno-unused-function -I/home/ld/software/TurboPFor-Integer-Compression/include
-LIBS= -L/home/ld/software/TurboPFor-Integer-Compression/
-LDFLAGS=-lz -lic -lm
+CFLAGS=-g -O3 -Wall
+LIBS=
+LDFLAGS=-lz
 
 .PHONY: all clean
 
-all: main
+all: tpg
 
-main: main.o graph.o path.o segment.o misc.o labels.o rle.o rope.o
+tpg: main.o graph.o path.o segments.o misc.o
 	@echo "* Linking $<"
 	$(CC) $(CFLAGS) $(LIBS) -o $@ $^ $(LDFLAGS)
 
@@ -16,4 +16,4 @@ main: main.o graph.o path.o segment.o misc.o labels.o rle.o rope.o
 	$(CC) $(CFLAGS) -o $@ -c $<
 
 clean:
-	rm -f main main.o graph.o path.o segment.o misc.o labels.o rle.o rope.o
+	rm -f tpg main.o graph.o segments.o path.o misc.o
