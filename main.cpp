@@ -7,9 +7,9 @@
 #include "kseq.h"
 #include "kvec.h"
 
-#include "graph.h"
-#include "misc.h"
-#include "path.h"
+#include "graph.hpp"
+#include "misc.hpp"
+#include "path.hpp"
 
 KSTREAM_INIT(gzFile, gzread, 65536)
 KHASH_MAP_INIT_STR(sti, int)
@@ -17,8 +17,8 @@ KHASH_SET_INIT_INT64(set)
 
 typedef struct {
   char *chrom;
-  int s;
-  int e;
+  uint s;
+  uint e;
 } region_t;
 
 int main(int argc, char *argv[]) {
@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
   char *p, *q;
   int regions_c = 64;
   int regions_n = 0;
-  region_t *regions = malloc(regions_c * sizeof(region_t)); /* Regions */
+  region_t *regions = (region_t *)malloc(regions_c * sizeof(region_t)); /* Regions */
 
   khiter_t k;
   int hret;
@@ -46,14 +46,14 @@ int main(int argc, char *argv[]) {
   }
   while (fgets(line, sizeof(line), file)) {
     if (regions_n == regions_c) {
-      regions = realloc(regions, 2 * regions_c * sizeof(region_t));
+      regions = (region_t *)realloc(regions, 2 * regions_c * sizeof(region_t));
       regions_c *= 2;
     }
     for (i = 0, p = q = line;; ++p) {
       if (*p == '\t' || *p == 0) {
         *p = 0;
         if (i == 0) {
-          regions[regions_n].chrom = malloc(p - q + 1);
+          regions[regions_n].chrom = (char *)malloc(p - q + 1);
           strncpy(regions[regions_n].chrom, q, p - q);
           regions[regions_n].chrom[p - q] = '\0';
           k = kh_put(sti, paths, regions[regions_n].chrom, &hret);
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
   /* Exract source/sink for each region */
   rt = realtime();
   region_t *vertices =
-      malloc(regions_n * sizeof(region_t)); /* Regions as vertex pair */
+    (region_t *)malloc(regions_n * sizeof(region_t)); /* Regions as vertex pair */
   int vertices_n = 0;
   kstring_t s = {0, 0, 0};
   int dret;
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
 
   int subhaps_n = 0;
   int subhaps_c = 128;
-  uint32_t **subhaps = malloc(subhaps_c * sizeof(uint32_t *));
+  uint32_t **subhaps = (uint32_t **)malloc(subhaps_c * sizeof(uint32_t *));
 
   fp = gzopen(gfa_fn, "r");
   ks = ks_init(fp);
@@ -190,11 +190,11 @@ int main(int argc, char *argv[]) {
           }
           /* Copy subhaplotypes */
           if (subhaps_n == subhaps_c) {
-            subhaps = realloc(subhaps, subhaps_c * 2 * sizeof(uint32_t *));
+            subhaps = (uint32_t**)realloc(subhaps, subhaps_c * 2 * sizeof(uint32_t *));
             subhaps_c *= 2;
           }
           subhaps[subhaps_n] =
-              malloc((p2 - p1 + 2) * sizeof(uint)); /* +1 for size */
+	    (uint*)malloc((p2 - p1 + 2) * sizeof(uint)); /* +1 for size */
           subhaps[subhaps_n][0] = p2 - p1 + 1;
           memcpy(subhaps[subhaps_n] + 1, path->vertices.a + p1,
                  subhaps[subhaps_n][0] * sizeof(uint32_t));
@@ -215,7 +215,7 @@ int main(int argc, char *argv[]) {
   /* Print GFA */
   uint64_t v1, v2, ee;
   int label_c = 128;
-  char *label = malloc(label_c);
+  char *label = (char *)malloc(label_c);
   for (k = kh_begin(VV); k != kh_end(VV); ++k) {
     if (kh_exist(VV, k)) {
       v1 = kh_key(VV, k);

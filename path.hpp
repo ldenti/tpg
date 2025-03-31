@@ -1,5 +1,5 @@
-#ifndef PS_PATH_H
-#define PS_PATH_H
+#ifndef PS_PATH_HPP
+#define PS_PATH_HPP
 
 #include <assert.h>
 #include <stdint.h>

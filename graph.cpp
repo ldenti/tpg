@@ -1,9 +1,9 @@
-#include "graph.h"
+#include "graph.hpp"
 
 KSTREAM_INIT(gzFile, gzread, 65536)
 
 graph_t *init_graph(char *fn) {
-  graph_t *g = malloc(sizeof(graph_t));
+  graph_t *g =(graph_t *)malloc(sizeof(graph_t));
   g->fn = fn;
 
   g->vertices = sgms_init();
@@ -67,7 +67,7 @@ void gfa_parse_S(char *s, seg_t *ret, int wseq) {
         ret->l = p - q;
         if (wseq == 1) {
           if (ret->l >= ret->c) {
-            char *temp = realloc(ret->seq, (ret->l * 2) * sizeof(char));
+            char *temp = (char *)realloc(ret->seq, (ret->l * 2) * sizeof(char));
             if (temp == NULL) {
               free(ret->seq);
               fprintf(stderr,

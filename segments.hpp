@@ -1,5 +1,5 @@
-#ifndef PS_SEGS_H
-#define PS_SEGS_H
+#ifndef PS_SEGS_HPP
+#define PS_SEGS_HPP
 
 #include <stdint.h>
 #include <stdlib.h>

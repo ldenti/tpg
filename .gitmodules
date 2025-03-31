@@ -1,0 +1,13 @@
+[submodule "ext/sdsl-lite"]
+	path = ext/sdsl-lite
+	url = https://github.com/vgteam/sdsl-lite
+	ignore = dirty
+[submodule "ext/libhandlegraph"]
+	path = ext/libhandlegraph
+	url = https://github.com/vgteam/libhandlegraph
+[submodule "ext/gbwt"]
+	path = ext/gbwt
+	url = https://github.com/jltsiren/gbwt
+[submodule "ext/gbwtgraph"]
+	path = ext/gbwtgraph
+	url = https://github.com/jltsiren/gbwtgraph

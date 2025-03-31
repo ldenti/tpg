@@ -1,5 +1,5 @@
-#ifndef PS_GRAPH_H
-#define PS_GRAPH_H
+#ifndef PS_GRAPH_HPP
+#define PS_GRAPH_HPP
 
 #include <assert.h>
 #include <stdint.h>
@@ -11,9 +11,11 @@
 #include "khash.h"
 #include "kseq.h"
 
-#include "misc.h"
-#include "path.h"
-#include "segments.h"
+#include "misc.hpp"
+#include "path.hpp"
+#include "segments.hpp"
+
+#include "gbwt/gbwt.h"
 
 /* Some assumptions I made:
  * - vertex identifiers in GFA are integers

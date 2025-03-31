@@ -1,8 +1,8 @@
-#include "path.h"
+#include "path.hpp"
 
 path_t *ph_init() {
-  path_t *path = malloc(1 * sizeof(path_t));
-  path->idx = malloc(128 * sizeof(char));
+  path_t *path = (path_t*)malloc(1 * sizeof(path_t));
+  path->idx = (char *)malloc(128 * sizeof(char));
 
   kv_init(path->vertices);
   path->data = kh_init(im);
