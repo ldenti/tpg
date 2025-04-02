@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-g -O3 -Wall
+CXXFLAGS=-g -O3 -Wall -fopenmp
 LIBS=
 LDFLAGS=-lz
 
@@ -16,10 +16,10 @@ GBWT_DIR:=$(EXT_DIR)/gbwt
 GBWTGRAPH_DIR=$(EXT_DIR)/gbwtgraph
 
 LIB_DEPS =
+LIB_DEPS += $(LIB_DIR)/libgbwtgraph.a
+LIB_DEPS += $(LIB_DIR)/libgbwt.a
 LIB_DEPS += $(LIB_DIR)/libhandlegraph.a
 LIB_DEPS += $(LIB_DIR)/libsdsl.a
-LIB_DEPS += $(LIB_DIR)/libgbwt.a
-LIB_DEPS += $(LIB_DIR)/libgbwtgraph.a
 
 .PHONY: all deps clean clean-all
 
@@ -50,11 +50,11 @@ $(LIB_DIR)/libgbwtgraph.a: logs $(LIB_DIR)/libgbwt.a $(LIB_DIR)/libsdsl.a $(LIB_
 
 %.o: %.cpp $(LIB_DEPS)
 	@echo '* Compiling $<'
-	$(CXX) $(CFLAGS) -I$(INC_DIR) -o $@ -c $<
+	$(CXX) $(CXXFLAGS) -I$(INC_DIR) -o $@ -c $<
 
-tpg: main.o graph.o path.o segments.o misc.o $(LIB_DEPS)
+tpg: main.o main_build.o main_extract.o graph.o path.o segments.o misc.o $(LIB_DEPS)
 	@echo "* Linking $<"
-	$(CXX) $(CFLAGS) $(LIBS) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $(LIBS) -o $@ $^ $(LDFLAGS)
 
 clean:
 	rm -f tpg main.o graph.o segments.o path.o misc.o

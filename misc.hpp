@@ -1,5 +1,5 @@
-#ifndef PS_MISC_HPP
-#define PS_MISC_HPP
+#ifndef TPG_MISC_HPP
+#define TPG_MISC_HPP
 
 #include <sys/time.h>
 

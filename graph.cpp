@@ -1,159 +1,195 @@
 #include "graph.hpp"
 
-KSTREAM_INIT(gzFile, gzread, 65536)
+Graph::Graph(const std::string &fp, bool gbz) : fp(fp) { is_gbz = gbz; }
 
-graph_t *init_graph(char *fn) {
-  graph_t *g =(graph_t *)malloc(sizeof(graph_t));
-  g->fn = fn;
+int Graph::load() {
+  sdsl::simple_sds::load_from(gbz, fp);
 
-  g->vertices = sgms_init();
-  g->v_map = kh_init(im);
-
-  return g;
+  try {
+    sdsl::simple_sds::load_from(sampled_horders, fp + ".ho");
+    has_horders = true;
+  } catch (const sdsl::simple_sds::CannotOpenFile &) {
+    has_horders = false;
+  };
+  return 0;
 }
 
-void destroy_graph(graph_t *g) {
-  sgms_destroy(g->vertices);
-  kh_destroy(im, g->v_map);
-  free(g);
-}
+// TODO: how to report the strand of the vertex? do we need this info?
 
-int load_vertices(graph_t *g, int wseq) {
-  kstring_t s = {0, 0, 0};
-  int dret;
-  gzFile fp = gzopen(g->fn, "r");
-  if (fp == 0)
-    return 0;
-  kstream_t *ks = ks_init(fp);
-  int hret;
-  khint_t k;
-  seg_t *seg = init_seg();
-  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-    if (s.s[0] == 'S') {
-      gfa_parse_S(s.s, seg, wseq);
+std::map<gbwt::size_type, std::vector<gbwt::size_type>>
+Graph::locate(gbwt::node_type v) const {
+  std::map<gbwt::size_type, std::vector<gbwt::size_type>> result;
 
-      k = kh_put(im, g->v_map, seg->idx, &hret);
-      kh_value(g->v_map, k) = g->vertices->n;
+  v = gbwt::Node::encode(v, 0);
+  gbwt::SearchState searchstate = gbz.index.find(v);
+  for (gbwt::size_type offset = searchstate.range.first;
+       offset <= searchstate.range.second; ++offset) {
+    gbwt::edge_type edge(searchstate.node, offset);
 
-      sgms_add(g->vertices, seg->idx, seg->seq, seg->l);
+    // Move to next samples position
+    int jumps = 0;
+    while (gbz.index.tryLocate(edge) == gbwt::invalid_sequence()) {
+      edge = gbz.index.LF(edge);
+      ++jumps;
     }
-  }
-  sgms_add(g->vertices, -1, "\0", 1);
 
-  destroy_seg(seg);
-  free(s.s);
-  ks_destroy(ks);
-  gzclose(fp);
+    gbwt::size_type record_start =
+        gbz.index.da_samples.start(gbz.index.toComp(edge.first));
+    auto iter = gbz.index.da_samples.sampled_offsets.predecessor(record_start +
+                                                                 edge.second);
+    assert(iter->second == record_start + edge.second);
+    // iter->first is the position of the sampled value
+
+    uint sampled_ph = sampled_horders[iter->first];
+    uint ph;
+    ph = (sampled_ph & 1) ? (sampled_ph >> 1) - jumps
+                          : (sampled_ph >> 1) + jumps;
+
+    result[gbz.index.da_samples.array[iter->first]].push_back(ph);
+  }
+
+  // v = gbwt::Node::encode(v, 1);
+  // searchstate = gbz.index.find(v);
+  // for (gbwt::size_type offset = searchstate.range.first;
+  //      offset <= searchstate.range.second; ++offset) {
+  //   gbwt::edge_type edge(searchstate.node, offset);
+
+  //   // Move to next samples position
+  //   int jumps = 0;
+  //   while (gbz.index.tryLocate(edge) == gbwt::invalid_sequence()) {
+  //     edge = gbz.index.LF(edge);
+  //     ++jumps;
+  //   }
+
+  //   gbwt::size_type record_start =
+  //       gbz.index.da_samples.start(gbz.index.toComp(edge.first));
+  //   auto iter = gbz.index.da_samples.sampled_offsets.predecessor(record_start
+  //   +
+  //                                                                edge.second);
+  //   assert(iter->second == record_start + edge.second);
+  //   // iter->first is the position of the sampled value
+
+  //   uint sampled_ph = sampled_horders[iter->first];
+  //   uint ph;
+  //   ph = (sampled_ph & 1) ? (sampled_ph >> 1) - jumps
+  //                         : (sampled_ph >> 1) + jumps;
+
+  //   result[gbz.index.da_samples.array[iter->first]].push_back(ph);
+  // }
+
+  return result;
+}
+
+int Graph::serialize_horders() const {
+  std::ofstream out;
+  out.open(fp + ".ho", std::ofstream::out | std::ofstream::app);
+  sampled_horders.simple_sds_serialize(out);
+  out.close();
 
   return 0;
 }
 
-int get_iidx(graph_t *g, int v) {
-  return kh_value(g->v_map, kh_get(im, g->v_map, v));
-}
+int Graph::build_horders() {
+  sampled_horders =
+      sdsl::int_vector<0>(get_nsamples(), 0, 32); // FIXME: is 16 enough?
 
-/** === GFA PARSING ======= **/
-void gfa_parse_S(char *s, seg_t *ret, int wseq) {
-  int i;       // , is_ok = 0;
-  char *p, *q; // *seg = 0, *seq = 0, *rest = 0;
-  for (i = 0, p = q = s + 2;; ++p) {
-    if (*p == 0 || *p == '\t') {
-      int c = *p;
-      *p = 0;
-      if (i == 0) {
-        ret->idx = atoi(q);
-        // strcpy(ret->idx, q);
-      } else if (i == 1) {
-        ret->l = p - q;
-        if (wseq == 1) {
-          if (ret->l >= ret->c) {
-            char *temp = (char *)realloc(ret->seq, (ret->l * 2) * sizeof(char));
-            if (temp == NULL) {
-              free(ret->seq);
-              fprintf(stderr,
-                      "Error while reallocating memory for segment %d\n",
-                      ret->idx);
-              exit(2);
-            } else {
-              ret->seq = temp;
-            }
-            ret->c = ret->l * 2;
-          }
-          strcpy(ret->seq, q);
-        }
-        // is_ok = 1, rest = c ? p + 1 : 0;
-        break;
+  // std::string sample_name, contig_name;
+  for (size_t i = 0; i < gbz.index.metadata.path_names.size(); ++i) {
+    // sample_name = gbz.index.metadata.fullPath(i).sample_name;
+    // contig_name = gbz.index.metadata.fullPath(i).contig_name;
+
+    // TODO: can we get the - inserting position from the + position?
+    for (int is_reverse = 0; is_reverse < 2; ++is_reverse) {
+      gbwt::size_type path_idx = gbwt::Path::encode(i, is_reverse);
+      gbwt::vector_type path = gbz.index.extract(path_idx);
+
+      gbwt::node_type v = path[0];
+      gbwt::SearchState ss = gbz.index.find(v);
+      gbwt::size_type offset;
+      for (offset = ss.range.first; offset <= ss.range.second; ++offset) {
+        gbwt::size_type locate = gbz.index.locate(ss.node, offset);
+        if (path_idx == locate)
+          // we found the record offset we need
+          break;
       }
-      ++i, q = p + 1;
-      if (c == 0)
-        break;
+      assert(offset <= ss.range.second);
+
+      int n = 0;
+      gbwt::edge_type edge(ss.node, offset);
+      while (edge.first != gbwt::ENDMARKER) {
+        if (gbz.index.tryLocate(edge) != gbwt::invalid_sequence()) {
+          // position is sampled, so we get the index where to insert this
+          // sample
+          gbwt::size_type record_start =
+              gbz.index.da_samples.start(gbz.index.toComp(edge.first));
+          auto iter = gbz.index.da_samples.sampled_offsets.predecessor(
+              record_start + edge.second);
+          assert(iter->second == record_start + edge.second);
+          // iter->first is the position to store
+          assert(iter->first < get_nsamples());
+
+          sampled_horders[iter->first] =
+              !is_reverse ? ((n << 1) | 1) : ((path.size() - n - 1) << 1);
+          // last bit stores if we are on + or - strand so that we later know if
+          // we have to add or subtract the jumps. Strand here is
+          // std::cerr << ">" << gbwt::Node::id(edge.first) << "/" << edge.first
+          //           << ":" << edge.second << " " << iter->first << "="
+          //           << sampled_horders[iter->first] << (is_reverse ? "+" :
+          //           "-")
+          //           << std::endl;
+        }
+
+        edge = gbz.index.LF(edge);
+        ++n;
+      }
     }
   }
-  // if (!is_ok) { // something is missing
+  // std::cerr << gbz.index.da_samples.array << std::endl;
+  // std::cerr << sampled_horders << std::endl;
+
+  return 0;
 }
 
-void gfa_parse_P(char *s, graph_t *g, path_t *path) {
-  int i, v;
-  char *p, *q, *qq;
-  for (i = 0, p = q = s + 2;; ++p) {
-    if (*p == 0 || *p == '\t') {
-      *p = 0;
-      if (i == 0) {
-        /* TODO: check for duplicates */
-        strcpy(path->idx, q); /* TODO: reallocation */
-      } else if (i == 1) {
-        char strand = *(p - 1);
-        qq = q;
-        for (qq = q;; ++qq) {
-          if (*qq == 0 || *qq == ',') {
-            int c = *qq;
-            *qq = 0;
-            strand = *(qq - 1);
-            *(qq - 1) = 0;
-            v = get_iidx(g, atoi(q));
-            ph_addv(path, v, strand == '+');
-            q = qq + 1;
-            if (c == 0)
-              break;
-          }
-        }
-        break;
-      }
-      ++i, q = p + 1;
+size_t Graph::get_nsamples() const { return gbz.index.da_samples.size(); }
+
+gbwt::size_type Graph::get_horder(gbwt::size_type p, gbwt::node_type v,
+                                  bool first) const {
+  bool hit = false;
+  gbwt::size_type res = first ? -1 : 0;
+
+  gbwt::SearchState ss = gbz.index.find(v);
+  for (gbwt::size_type offset = ss.range.first; offset <= ss.range.second;
+       ++offset) {
+    gbwt::edge_type edge(ss.node, offset);
+
+    // Move to next samples position
+    int jumps = 0;
+    while (gbz.index.tryLocate(edge) == gbwt::invalid_sequence()) {
+      edge = gbz.index.LF(edge);
+      ++jumps;
     }
+    gbwt::size_type record_start =
+        gbz.index.da_samples.start(gbz.index.toComp(edge.first));
+    auto iter = gbz.index.da_samples.sampled_offsets.predecessor(record_start +
+                                                                 edge.second);
+    if (gbz.index.da_samples.array[iter->first] != p)
+      continue;
+
+    assert(iter->second == record_start + edge.second);
+    // iter->first is the position of the sampled value
+
+    uint sampled_ph = sampled_horders[iter->first];
+    gbwt::size_type ph = (sampled_ph & 1) ? (sampled_ph >> 1) - jumps
+                                          : (sampled_ph >> 1) + jumps;
+    if (first)
+      res = res < ph ? res : ph;
+    else
+      res = res < ph ? ph : res;
+    hit = true;
   }
+  return hit ? res : -1;
 }
 
-void gfa_parse_W(char *s, graph_t *g, path_t *path) {
-  int i, v;
-  char *p, *q, *qq;
-  for (i = 0, p = q = s + 2;; ++p) {
-    if (*p == 0 || *p == '\t') {
-      *p = 0;
-      if (i < 2) {
-        *p = '#';
-        ++i;
-        continue;
-      } else if (i == 2) {
-        strcpy(path->idx, q); /* TODO: reallocation */
-      } else if (i == 5) {
-        char strand = *q;
-        ++q;
-        for (qq = q;; ++qq) {
-          if (*qq == 0 || *qq == '>' || *qq == '<') {
-            int c = *qq;
-            *qq = 0;
-            v = get_iidx(g, atoi(q));
-            ph_addv(path, v, strand == '>');
-            q = qq + 1;
-            if (c == 0)
-              break;
-            strand = c;
-          }
-        }
-        break;
-      }
-      ++i, q = p + 1;
-    }
-  }
+std::string Graph::get_gfa_idx(gbwt::node_type v) const {
+  return gbz.graph.get_segment_name(gbz.graph.get_handle(v));
 }
