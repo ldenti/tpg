@@ -4,3 +4,7 @@ tpg
 include/
 lib/
 logs/
+.vscode/
+*.ri
+*.fa
+*.fai

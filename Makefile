@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-g -O3 -Wall -fopenmp
+CXXFLAGS=-g -O3 -std=c++17 -Wall -fopenmp
 LIBS=
 LDFLAGS=-lz
 
@@ -52,12 +52,12 @@ $(LIB_DIR)/libgbwtgraph.a: logs $(LIB_DIR)/libgbwt.a $(LIB_DIR)/libsdsl.a $(LIB_
 	@echo '* Compiling $<'
 	$(CXX) $(CXXFLAGS) -I$(INC_DIR) -o $@ -c $<
 
-tpg: main.o main_build.o main_extract.o graph.o path.o segments.o misc.o $(LIB_DEPS)
+tpg: main.o main_build.o main_extract.o misc.o $(LIB_DEPS)
 	@echo "* Linking $<"
 	$(CXX) $(CXXFLAGS) $(LIBS) -o $@ $^ $(LDFLAGS)
 
 clean:
-	rm -f tpg main.o graph.o segments.o path.o misc.o
+	rm -f tpg main.o main_build.o main_extract.o misc.o
 
 clean-all:
-	rm -rf tpg main.o graph.o segments.o path.o misc.o $(LIB_DIR) $(INC_DIR)
+	rm -rf tpg main.o main_build.o main_extract.o misc.o $(LIB_DIR) $(INC_DIR)
