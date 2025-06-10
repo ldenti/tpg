@@ -36,7 +36,6 @@ typedef struct {
 typedef struct {
   std::string chrom;      // chromosome
   std::string name;       // name, i.e., same as BED region
-  int idx;                // unique identifier (counter)
   gbwt::vector_type path; // path
   uint offset1, offset2;  // offsets on first and last vertex
 } subhap_t;
@@ -243,8 +242,6 @@ int main_extract(int argc, char *argv[]) {
   rt = realtime();
 
   std::vector<subhap_t> subhaps;
-  std::map<std::string, int> loci_ids;
-
   for (const hit_t &ss : ends) {
     std::string chrom = ss.chrom;
     uint source = ss.v1;
@@ -273,16 +270,20 @@ int main_extract(int argc, char *argv[]) {
             gbwt::size_type pp = gbwt::Path::id(pidx1);
             std::string sample_name =
                 gbz.index.metadata.fullPath(pp).sample_name;
+            std::string contig_name =
+                gbz.index.metadata.fullPath(pp).contig_name;
+            int haplotype = gbz.index.metadata.fullPath(pp).haplotype;
             // if (sample_name.compare("_gbwt_ref") != 0)
             //   continue;
             if (fl.seqOffset(pvisits1[i]) < fl.seqOffset(pvisits2[j]))
               continue;
 
-            if (loci_ids.find(name) == loci_ids.end())
-              loci_ids[name] = 0;
-            subhap_t subhap{chrom, name,          loci_ids[name],
-                            {},    source_offset, sink_offset};
-            ++loci_ids[name];
+            subhap_t subhap{chrom,
+                            name + "#" + sample_name + "#" +
+                                std::to_string(haplotype),
+                            {},
+                            source_offset,
+                            sink_offset};
             gbwt::edge_type position = std::make_pair(e_source, i);
             //   if (!gbz.index.contains(position)) {
             //     vv1 = gbwt::Node::encode(v1, 1);
@@ -306,11 +307,11 @@ int main_extract(int argc, char *argv[]) {
   fprintf(stderr, "[I::%s] extracted %lu subhaplotypes in %.3f secs\n",
           __func__, subhaps.size(), realtime() - rt);
 
+  rt = realtime();
   if (fasta) {
     // TODO: cut prefix and suffix
     for (const subhap_t &subhap : subhaps) {
-      std::cout << ">" << subhap.name << "." << subhap.idx << " "
-                << subhap.chrom << std::endl;
+      std::cout << ">" << subhap.name << " " << subhap.chrom << std::endl;
       uint i = 0;
       for (const auto &v : subhap.path) {
         std::string seq = get_gfa_seq(gbz, v >> 1);
@@ -325,6 +326,8 @@ int main_extract(int argc, char *argv[]) {
       std::cout << std::endl;
     }
   } else {
+    // get segments and links
+
     /* we cannot encode node identifiers or handles since vertices longer
      * than 1024 are broken down. Only way I found to store each vertex
      * only once (one element per "real" vertex) is by using this pair
@@ -332,42 +335,51 @@ int main_extract(int argc, char *argv[]) {
      * since we need it in GFA) */
     std::set<std::pair<std::string, std::pair<uint32_t, uint32_t>>> VV;
     std::set<uint64_t> EE;
-    // // Print GFA
-    // rt = realtime();
-    // for (const std::pair<std::string, std::pair<uint32_t, uint32_t>> &v : VV)
-    // {
-    //   printf("S\t%s\t", v.first.c_str());
-    //   for (size_t i = v.second.first; i < v.second.second; ++i) {
-    //     printf(
-    //         "%s",
-    //         graph.gbz.graph.get_sequence(graph.gbz.graph.get_handle(i)).c_str());
-    //   }
-    //   printf("\n");
-    // }
 
-    // for (const auto &ee : EE) {
-    //   uint32_t v1 = ee >> 32;
-    //   uint32_t v2 = (uint32_t)ee;
+    for (const subhap_t &subhap : subhaps) {
+      VV.insert(
+          gbz.graph.get_segment(gbz.graph.node_to_handle(subhap.path[0])));
 
-    //   printf("L\t%s\t%c\t%s\t%c\t0M\n",
-    //          graph.get_gfa_idx(gbwt::Node::id(v1)).c_str(),
-    //          gbwt::Node::is_reverse(v1) ? '-' : '+',
-    //          graph.get_gfa_idx(gbwt::Node::id(v2)).c_str(),
-    //          gbwt::Node::is_reverse(v2) ? '-' : '+');
-    // }
+      for (uint j = 1; j < subhap.path.size(); ++j) {
+        VV.insert(
+            gbz.graph.get_segment(gbz.graph.node_to_handle(subhap.path[j])));
+        EE.insert(((uint64_t)subhap.path[j - 1] << 32) |
+                  ((uint64_t)subhap.path[j]));
+      }
+    }
 
-    // for (size_t i = 0; i < subhaps.size(); ++i) {
-    //   printf("P\t%s\t%s%c", subhaps_names[i].c_str(),
-    //          graph.get_gfa_idx(gbwt::Node::id(subhaps[i][0])).c_str(),
-    //          gbwt::Node::is_reverse(subhaps[i][0]) ? '-' : '+');
-    //   // this works since we are sure to have at least one vertex
-    //   for (uint j = 1; j < subhaps[i].size(); ++j)
-    //     printf(",%s%c",
-    //     graph.get_gfa_idx(gbwt::Node::id(subhaps[i][j])).c_str(),
-    //            gbwt::Node::is_reverse(subhaps[i][j]) ? '-' : '+');
-    //   printf("\t*\n");
-    // }
+    // Print GFA
+    for (const std::pair<std::string, std::pair<uint32_t, uint32_t>> &v : VV) {
+      std::cout << "S\t" << v.first << "\t";
+      for (size_t i = v.second.first; i < v.second.second; ++i) {
+        std::cout << gbz.graph.get_sequence(gbz.graph.get_handle(i));
+      }
+      std::cout << std::endl;
+    }
+
+    for (const auto &ee : EE) {
+      uint32_t v1 = ee >> 32;
+      uint32_t v2 = (uint32_t)ee;
+      std::cout << "L\t" << get_gfa_idx(gbz, gbwt::Node::id(v1)) << "\t"
+                << (gbwt::Node::is_reverse(v1) ? '-' : '+') << "\t"
+                << get_gfa_idx(gbz, gbwt::Node::id(v2)) << "\t"
+                << (gbwt::Node::is_reverse(v2) ? '-' : '+') << "\t" << "0M"
+                << std::endl;
+    }
+
+    for (const subhap_t &subhap : subhaps) {
+      std::cout << "P" << "\t" << subhap.name << "#" << subhap.chrom << "\t"
+                << get_gfa_idx(gbz, gbwt::Node::id(subhap.path[0]))
+                << (gbwt::Node::is_reverse(subhap.path[0]) ? '-' : '+');
+      // this works since we are sure to have at least one vertex
+      for (uint j = 1; j < subhap.path.size(); ++j)
+        std::cout << "," << get_gfa_idx(gbz, gbwt::Node::id(subhap.path[j]))
+                  << (gbwt::Node::is_reverse(subhap.path[j]) ? '-' : '+');
+      std::cout << "\t*" << std::endl;
+    }
   }
+  fprintf(stderr, "[I::%s] dumped %s in %.3f secs\n", __func__,
+          fasta ? "FASTA" : "GFA", realtime() - rt);
 
   return 0;
 }
